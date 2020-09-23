@@ -26,6 +26,7 @@ import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
+import android.webkit.JsResult;
 import android.webkit.PermissionRequest;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
@@ -36,6 +37,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import android.webkit.JsPromptResult;
 
 import com.facebook.react.views.scroll.ScrollEvent;
 import com.facebook.react.views.scroll.ScrollEventType;
@@ -79,6 +81,15 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+
+import android.util.Log;
+import android.app.AlertDialog;
+import android.widget.EditText;
+import android.view.KeyEvent;
+import android.content.DialogInterface;
+import android.content.DialogInterface.OnCancelListener;
+import android.content.DialogInterface.OnClickListener;
+import android.content.DialogInterface.OnKeyListener;
 
 import javax.annotation.Nullable;
 
@@ -138,6 +149,7 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
   protected boolean mAllowsFullscreenVideo = false;
   protected @Nullable String mUserAgent = null;
   protected @Nullable String mUserAgentWithApplicationName = null;
+  protected @Nullable String androidPromptTitle = "JavaScript";
 
   public RNCWebViewManager() {
     mWebViewConfig = new WebViewConfig() {
@@ -344,6 +356,15 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
       mUserAgent = null;
     }
     this.setUserAgentString(view);
+  }
+
+  @ReactProp(name = "androidPromptTitle")
+  public void setAndroidPromptTitle(WebView view, @Nullable String title) {
+    if (title != null) {
+      androidPromptTitle = title;
+    } else {
+      androidPromptTitle = null;
+    }
   }
 
   @ReactProp(name = "applicationNameForUserAgent")
@@ -709,6 +730,46 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
         mWebChromeClient.onHideCustomView();
       }
       mWebChromeClient = new RNCWebChromeClient(reactContext, webView) {
+        @Override
+        public boolean onJsPrompt(WebView view, String url, String message, String defaultValue, JsPromptResult result) {
+          Log.d("webview", "js prompt came here");
+          final AlertDialog.Builder builder = new AlertDialog.Builder(view.getContext());
+
+          builder.setTitle(androidPromptTitle);
+
+          final EditText et = new EditText(view.getContext());
+          et.setSingleLine();
+          et.setText(defaultValue);
+          et.setHint(message);
+          et.setPadding(64, 20, 10, 0);
+          et.requestFocus();
+          builder.setView(et)
+            .setPositiveButton("OK", new OnClickListener() {
+              public void onClick(DialogInterface dialog, int which) {
+                result.confirm(et.getText().toString());
+              }
+            })
+            .setNeutralButton("cancel", new OnClickListener() {
+              public void onClick(DialogInterface dialog, int which) {
+                result.cancel();
+              }
+            });
+
+          // Shield keycode equal to 84 and other keys, to avoid the dialog box after the button message and the page can no longer pop up the dialog box
+          builder.setOnKeyListener(new OnKeyListener() {
+            public boolean onKey(DialogInterface dialog, int keyCode,KeyEvent event) {
+              Log.v("onJsPrompt", "keyCode==" + keyCode + "event="+ event);
+              return true;
+            }
+          });
+
+          // Disable response to the event of pressing the back button
+          // builder.setCancelable(false);
+          AlertDialog dialog = builder.create();
+          dialog.show();
+          return true;
+        }
+
         @Override
         public Bitmap getDefaultVideoPoster() {
           return Bitmap.createBitmap(50, 50, Bitmap.Config.ARGB_8888);
